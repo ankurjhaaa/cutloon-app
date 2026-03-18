@@ -1,98 +1,575 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  BackHandler,
+  Easing,
+  Image,
+  Linking,
+  Platform,
+  StyleSheet,
+  Text,
+  ToastAndroid,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+
+const STORAGE_PERMISSION_MESSAGE = 'CUTLOON_REQUEST_STORAGE_PERMISSION';
+const LOCATION_PERMISSION_MESSAGE = 'CUTLOON_REQUEST_LOCATION_PERMISSION';
+const CAMERA_PERMISSION_MESSAGE = 'CUTLOON_REQUEST_CAMERA_PERMISSION';
+
+const WEBVIEW_PERMISSION_BRIDGE = `
+(function () {
+  if (window.__cutloonPermissionBridgeInstalled) {
+    return;
+  }
+  window.__cutloonPermissionBridgeInstalled = true;
+
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (!target || !target.closest) {
+      return;
+    }
+
+    var fileInput = target.closest('input[type="file"]');
+    if (fileInput && window.ReactNativeWebView) {
+      var accept = fileInput.getAttribute('accept') || '';
+      if (accept.includes('image') || accept.includes('video')) {
+        window.ReactNativeWebView.postMessage('${CAMERA_PERMISSION_MESSAGE}');
+      } else {
+        window.ReactNativeWebView.postMessage('${STORAGE_PERMISSION_MESSAGE}');
+      }
+    }
+  }, true);
+
+  navigator.geolocation.getCurrentPosition = function (successCallback, errorCallback, options) {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage('${LOCATION_PERMISSION_MESSAGE}');
+      var mockPosition = {
+        coords: {
+          latitude: 0,
+          longitude: 0,
+          accuracy: 0,
+          altitude: 0,
+          altitudeAccuracy: 0,
+          heading: 0,
+          speed: 0,
+        },
+        timestamp: Date.now(),
+      };
+      setTimeout(function () {
+        successCallback(mockPosition);
+      }, 100);
+    } else {
+      errorCallback({ code: 1, message: 'Permission denied' });
+    }
+  };
+
+  var originalGetUserMedia = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+  if (navigator.mediaDevices) {
+    navigator.mediaDevices.getUserMedia = function (constraints) {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage('${CAMERA_PERMISSION_MESSAGE}');
+      }
+
+      if (!originalGetUserMedia) {
+        return Promise.reject(new Error('Camera not available'));
+      }
+
+      return originalGetUserMedia.call(navigator.mediaDevices, constraints);
+    };
+  }
+})();
+true;
+`;
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const colorScheme = useColorScheme();
+  const isDarkMode = colorScheme === 'dark';
+  const [showSplash, setShowSplash] = useState(true);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const webViewRef = useRef<WebView | null>(null);
+  const lastBackPressTime = useRef(0);
+  const splashOpacity = useRef(new Animated.Value(1)).current;
+  const logoScale = useRef(new Animated.Value(0.56)).current;
+  const logoSpin = useRef(new Animated.Value(0)).current;
+  const ringScale = useRef(new Animated.Value(0.72)).current;
+  const ringOpacity = useRef(new Animated.Value(0)).current;
+  const titleOpacity = useRef(new Animated.Value(0.1)).current;
+  const brandOpacity = useRef(new Animated.Value(0)).current;
+  const brandTranslateY = useRef(new Animated.Value(30)).current;
+  const orbitRotation = useRef(new Animated.Value(0)).current;
+  const dotWave = useRef(new Animated.Value(0)).current;
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  useEffect(() => {
+    const orbitAnimation = Animated.loop(
+      Animated.timing(orbitRotation, {
+        toValue: 1,
+        duration: 2600,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+
+    const dotsAnimation = Animated.loop(
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(dotWave, {
+            toValue: 1,
+            duration: 650,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(dotWave, {
+            toValue: 0,
+            duration: 650,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ])
+      )
+    );
+
+    orbitAnimation.start();
+    dotsAnimation.start();
+
+    const splashAnimation = Animated.sequence([
+      Animated.parallel([
+        Animated.timing(ringOpacity, {
+          toValue: 1,
+          duration: 500,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(ringScale, {
+          toValue: 1.2,
+          duration: 1600,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoSpin, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.out(Easing.exp),
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoScale, {
+          toValue: 1,
+          duration: 1600,
+          easing: Easing.out(Easing.back(1.2)),
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.delay(320),
+          Animated.timing(titleOpacity, {
+            toValue: 1,
+            duration: 650,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.delay(1200),
+          Animated.parallel([
+            Animated.timing(brandOpacity, {
+              toValue: 1,
+              duration: 700,
+              easing: Easing.out(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(brandTranslateY, {
+              toValue: 0,
+              duration: 700,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+      ]),
+      Animated.delay(2200),
+      Animated.parallel([
+        Animated.timing(splashOpacity, {
+          toValue: 0,
+          duration: 760,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(ringOpacity, {
+          toValue: 0,
+          duration: 760,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    ]);
+
+    splashAnimation.start(() => {
+      setShowSplash(false);
+    });
+
+    return () => {
+      splashAnimation.stop();
+      orbitAnimation.stop();
+      dotsAnimation.stop();
+    };
+  }, [
+    brandOpacity,
+    brandTranslateY,
+    dotWave,
+    logoScale,
+    logoSpin,
+    orbitRotation,
+    ringOpacity,
+    ringScale,
+    splashOpacity,
+    titleOpacity,
+  ]);
+
+  useEffect(() => {
+    const backSubscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showSplash) {
+        return true;
+      }
+
+      if (canGoBack && webViewRef.current) {
+        webViewRef.current.goBack();
+        return true;
+      }
+
+      const currentTime = Date.now();
+
+      if (currentTime - lastBackPressTime.current < 2000) {
+        BackHandler.exitApp();
+        return true;
+      }
+
+      lastBackPressTime.current = currentTime;
+      ToastAndroid.show('Press back again to exit', ToastAndroid.SHORT);
+      return true;
+    });
+
+    return () => {
+      backSubscription.remove();
+    };
+  }, [canGoBack, showSplash]);
+
+  const logoRotate = logoSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-14deg', '0deg'],
+  });
+
+  const orbitRotate = orbitRotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const leftDotScale = dotWave.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.85, 1.15],
+  });
+
+  const centerDotScale = dotWave.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1.15, 0.9],
+  });
+
+  const rightDotScale = dotWave.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.95, 1.2],
+  });
+
+  const requestStoragePermissionForUpload = async () => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    const currentPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+    if (currentPermission.granted) {
+      return;
+    }
+
+    const requestedPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (requestedPermission.granted) {
+      return;
+    }
+
+    if (!requestedPermission.canAskAgain) {
+      Alert.alert(
+        'Storage permission disabled',
+        'Image upload ke liye storage permission required hai. Please app settings me jaakar permission allow kijiye.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Open Settings',
+            onPress: () => {
+              Linking.openSettings();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    ToastAndroid.show('Storage permission allow karein image upload ke liye', ToastAndroid.SHORT);
+  };
+
+  const requestLocationPermission = async () => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    const currentPermission = await Location.getForegroundPermissionsAsync();
+    if (currentPermission.granted) {
+      return;
+    }
+
+    const requestedPermission = await Location.requestForegroundPermissionsAsync();
+    if (requestedPermission.granted) {
+      return;
+    }
+
+    if (!requestedPermission.canAskAgain) {
+      Alert.alert(
+        'Location permission disabled',
+        'Current location access ke liye location permission required hai. Please app settings me jaakar permission allow kijiye.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Open Settings',
+            onPress: () => {
+              Linking.openSettings();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    ToastAndroid.show('Location permission allow karein location access ke liye', ToastAndroid.SHORT);
+  };
+
+  const requestCameraPermission = async () => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    const currentPermission = await ImagePicker.getCameraPermissionsAsync();
+    if (currentPermission.granted) {
+      return;
+    }
+
+    const requestedPermission = await ImagePicker.requestCameraPermissionsAsync();
+    if (requestedPermission.granted) {
+      return;
+    }
+
+    if (!requestedPermission.canAskAgain) {
+      Alert.alert(
+        'Camera permission disabled',
+        'Camera access ke liye camera permission required hai. Please app settings me jaakar permission allow kijiye.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Open Settings',
+            onPress: () => {
+              Linking.openSettings();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    ToastAndroid.show('Camera permission allow karein camera access ke liye', ToastAndroid.SHORT);
+  };
+
+  const handleWebViewMessage = async (event: WebViewMessageEvent) => {
+    if (event.nativeEvent.data === STORAGE_PERMISSION_MESSAGE) {
+      await requestStoragePermissionForUpload();
+    } else if (event.nativeEvent.data === LOCATION_PERMISSION_MESSAGE) {
+      await requestLocationPermission();
+    } else if (event.nativeEvent.data === CAMERA_PERMISSION_MESSAGE) {
+      await requestCameraPermission();
+    }
+  };
+
+  return (
+    <SafeAreaView
+      style={[
+        styles.container,
+        { backgroundColor: isDarkMode ? Colors.dark.background : Colors.light.background },
+      ]}
+      edges={['top']}>
+      <StatusBar style={showSplash ? 'dark' : isDarkMode ? 'light' : 'dark'} />
+
+      <WebView
+        ref={webViewRef}
+        source={{ uri: 'https://www.cutloon.com/login' }}
+        startInLoadingState
+        javaScriptEnabled
+        domStorageEnabled
+        allowFileAccess
+        onMessage={handleWebViewMessage}
+        injectedJavaScriptBeforeContentLoaded={WEBVIEW_PERMISSION_BRIDGE}
+        onNavigationStateChange={(navigationState) => {
+          setCanGoBack(navigationState.canGoBack);
+        }}
+        renderLoading={() => (
+          <View style={styles.loaderContainer}>
+            <ActivityIndicator size="large" />
+          </View>
+        )}
+      />
+
+      {showSplash && (
+        <Animated.View
+          style={[
+            styles.splashOverlay,
+            {
+              backgroundColor: '#FFFFFF',
+              opacity: splashOpacity,
+            },
+          ]}>
+          <View style={styles.contentWrap}>
+            <Animated.View style={[styles.orbitLayer, { transform: [{ rotate: orbitRotate }] }]}>
+              <View style={[styles.orbitDot, styles.orbitDotTop]} />
+              <View style={[styles.orbitDot, styles.orbitDotRight]} />
+              <View style={[styles.orbitDot, styles.orbitDotBottom]} />
+            </Animated.View>
+
+            <Animated.View
+              style={[
+                styles.logoRing,
+                {
+                  opacity: ringOpacity,
+                  transform: [{ scale: ringScale }],
+                },
+              ]}
+            />
+
+            <Animated.View style={{ transform: [{ scale: logoScale }, { rotate: logoRotate }] }}>
+              <Image source={require('@/assets/images/app-logo-dummy.png')} style={styles.logo} />
+            </Animated.View>
+          </View>
+
+          <Animated.View
+            style={[
+              styles.brandBlock,
+              {
+                opacity: brandOpacity,
+                transform: [{ translateY: brandTranslateY }],
+              },
+            ]}>
+            <Animated.Text style={[styles.appTitle, { opacity: titleOpacity }]}>Cutloon</Animated.Text>
+            <Text style={styles.slogan}>salons.discovery.booking</Text>
+            <View style={styles.dotRow}>
+              <Animated.View style={[styles.dot, { transform: [{ scale: leftDotScale }] }]} />
+              <Animated.View style={[styles.dot, { transform: [{ scale: centerDotScale }] }]} />
+              <Animated.View style={[styles.dot, { transform: [{ scale: rightDotScale }] }]} />
+            </View>
+          </Animated.View>
+        </Animated.View>
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+  },
+  loaderContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  splashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  contentWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 240,
+    height: 240,
+    marginBottom: 90,
+  },
+  orbitLayer: {
+    position: 'absolute',
+    width: 228,
+    height: 228,
+    borderRadius: 114,
+  },
+  orbitDot: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#D71920',
+  },
+  orbitDotTop: {
+    top: 3,
+    left: 110,
+  },
+  orbitDotRight: {
+    top: 110,
+    right: 3,
+  },
+  orbitDotBottom: {
+    bottom: 3,
+    left: 110,
+  },
+  logoRing: {
+    position: 'absolute',
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    borderWidth: 2,
+    borderColor: '#D71920',
+    backgroundColor: '#FFF5F6',
+  },
+  logo: {
+    width: 116,
+    height: 116,
+  },
+  brandBlock: {
+    position: 'absolute',
+    bottom: 88,
+    alignItems: 'center',
+  },
+  appTitle: {
+    fontSize: 34,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    color: '#D71920',
+  },
+  slogan: {
+    marginTop: 4,
+    fontSize: 13,
+    letterSpacing: 1.7,
+    color: '#AA1118',
+    fontWeight: '600',
+  },
+  dotRow: {
+    marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#D71920',
   },
 });
