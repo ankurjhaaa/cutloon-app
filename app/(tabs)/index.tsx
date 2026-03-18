@@ -303,8 +303,8 @@ export default function HomeScreen() {
 
     if (!requestedPermission.canAskAgain) {
       Alert.alert(
-        'Storage permission disabled',
-        'Image upload ke liye storage permission required hai. Please app settings me jaakar permission allow kijiye.',
+        'Storage Permission Disabled',
+        'Storage permissions are required to upload images. Please enable them in app settings.',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -318,7 +318,7 @@ export default function HomeScreen() {
       return;
     }
 
-    ToastAndroid.show('Storage permission allow karein image upload ke liye', ToastAndroid.SHORT);
+    ToastAndroid.show('Storage permission required to upload images', ToastAndroid.SHORT);
   };
 
   const requestLocationPermission = async () => {
@@ -338,8 +338,8 @@ export default function HomeScreen() {
 
     if (!requestedPermission.canAskAgain) {
       Alert.alert(
-        'Location permission disabled',
-        'Current location access ke liye location permission required hai. Please app settings me jaakar permission allow kijiye.',
+        'Location Permission Disabled',
+        'Location permissions are required to access your location. Please enable them in app settings.',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -353,7 +353,7 @@ export default function HomeScreen() {
       return;
     }
 
-    ToastAndroid.show('Location permission allow karein location access ke liye', ToastAndroid.SHORT);
+    ToastAndroid.show('Location permission required to access your location', ToastAndroid.SHORT);
   };
 
   const requestCameraPermission = async () => {
@@ -373,8 +373,8 @@ export default function HomeScreen() {
 
     if (!requestedPermission.canAskAgain) {
       Alert.alert(
-        'Camera permission disabled',
-        'Camera access ke liye camera permission required hai. Please app settings me jaakar permission allow kijiye.',
+        'Camera Permission Disabled',
+        'Camera permissions are required to access your camera. Please enable them in app settings.',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -388,7 +388,7 @@ export default function HomeScreen() {
       return;
     }
 
-    ToastAndroid.show('Camera permission allow karein camera access ke liye', ToastAndroid.SHORT);
+    ToastAndroid.show('Camera permission required to access your camera', ToastAndroid.SHORT);
   };
 
   const handleWebViewMessage = async (event: WebViewMessageEvent) => {
