@@ -3,7 +3,6 @@ import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Animated,
   BackHandler,
@@ -148,8 +147,10 @@ export default function HomeScreen() {
   const brandTranslateY = useRef(new Animated.Value(30)).current;
   const orbitRotation = useRef(new Animated.Value(0)).current;
   const dotWave = useRef(new Animated.Value(0)).current;
-  const [refreshing, setRefreshing] = useState(false);
   const [isAtTop, setIsAtTop] = useState(true);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const [isPullRefreshLoadDone, setIsPullRefreshLoadDone] = useState(false);
+  const [pullRefreshStartedAt, setPullRefreshStartedAt] = useState<number | null>(null);
 
   useEffect(() => {
     const orbitAnimation = Animated.loop(
@@ -473,9 +474,119 @@ export default function HomeScreen() {
   };
 
   const onRefresh = () => {
-    setRefreshing(true);
+    if (isPullRefreshing || showSplash) {
+      return;
+    }
+
+    setPullRefreshStartedAt(Date.now());
+    setIsPullRefreshLoadDone(false);
+    setIsPullRefreshing(true);
     webViewRef.current?.reload();
   };
+
+  useEffect(() => {
+    if (!isPullRefreshing) {
+      return;
+    }
+
+    splashOpacity.setValue(1);
+    ringOpacity.setValue(0);
+    ringScale.setValue(0.72);
+    logoSpin.setValue(0);
+    logoScale.setValue(0.56);
+    titleOpacity.setValue(0.1);
+    brandOpacity.setValue(0);
+    brandTranslateY.setValue(30);
+
+    const refreshAnimation = Animated.parallel([
+      Animated.timing(ringOpacity, {
+        toValue: 1,
+        duration: 500,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(ringScale, {
+        toValue: 1.2,
+        duration: 1600,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(logoSpin, {
+        toValue: 1,
+        duration: 1500,
+        easing: Easing.out(Easing.exp),
+        useNativeDriver: true,
+      }),
+      Animated.timing(logoScale, {
+        toValue: 1,
+        duration: 1600,
+        easing: Easing.out(Easing.back(1.2)),
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.delay(320),
+        Animated.timing(titleOpacity, {
+          toValue: 1,
+          duration: 650,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.sequence([
+        Animated.delay(1200),
+        Animated.parallel([
+          Animated.timing(brandOpacity, {
+            toValue: 1,
+            duration: 700,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(brandTranslateY, {
+            toValue: 0,
+            duration: 700,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
+    ]);
+
+    refreshAnimation.start();
+
+    return () => {
+      refreshAnimation.stop();
+    };
+  }, [
+    brandOpacity,
+    brandTranslateY,
+    isPullRefreshing,
+    logoScale,
+    logoSpin,
+    ringOpacity,
+    ringScale,
+    splashOpacity,
+    titleOpacity,
+  ]);
+
+  useEffect(() => {
+    if (!isPullRefreshing || !isPullRefreshLoadDone || pullRefreshStartedAt === null) {
+      return;
+    }
+
+    const minDuration = 2500;
+    const elapsed = Date.now() - pullRefreshStartedAt;
+    const remaining = Math.max(0, minDuration - elapsed);
+
+    const timeout = setTimeout(() => {
+      setIsPullRefreshing(false);
+      setIsPullRefreshLoadDone(false);
+      setPullRefreshStartedAt(null);
+    }, remaining);
+
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [isPullRefreshing, isPullRefreshLoadDone, pullRefreshStartedAt]);
 
   return (
     <SafeAreaView
@@ -510,14 +621,13 @@ export default function HomeScreen() {
         <ScrollView
           contentContainerStyle={{ flex: 1 }}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} enabled={isAtTop} />
+            <RefreshControl refreshing={false} onRefresh={onRefresh} enabled={isAtTop} />
           }
           scrollEnabled={isAtTop}
           style={{ flex: 1 }}>
           <WebView
             ref={webViewRef}
             source={{ uri: 'https://www.cutloon.com/login' }}
-            startInLoadingState
             javaScriptEnabled
             domStorageEnabled
             allowFileAccess
@@ -532,7 +642,9 @@ export default function HomeScreen() {
               setIsAtTop(y <= 0);
             }}
             onLoadEnd={() => {
-              setRefreshing(false);
+              if (isPullRefreshing) {
+                setIsPullRefreshLoadDone(true);
+              }
             }}
            
             nestedScrollEnabled={true}
@@ -540,6 +652,56 @@ export default function HomeScreen() {
           />
         </ScrollView>
       </View>
+
+      {!showSplash && isPullRefreshing && (
+        <Animated.View
+          style={[
+            styles.splashOverlay,
+            {
+              backgroundColor: '#FFFFFF',
+              opacity: splashOpacity,
+            },
+          ]}>
+          <View style={styles.contentWrap}>
+            <Animated.View style={[styles.orbitLayer, { transform: [{ rotate: orbitRotate }] }]}>
+              <View style={[styles.orbitDot, styles.orbitDotTop]} />
+              <View style={[styles.orbitDot, styles.orbitDotRight]} />
+              <View style={[styles.orbitDot, styles.orbitDotBottom]} />
+            </Animated.View>
+
+            <Animated.View
+              style={[
+                styles.logoRing,
+                {
+                  opacity: ringOpacity,
+                  transform: [{ scale: ringScale }],
+                },
+              ]}
+            />
+
+            <Animated.View style={{ transform: [{ scale: logoScale }, { rotate: logoRotate }] }}>
+              <Image source={require('@/assets/images/app-logo-dummy.png')} style={styles.logo} />
+            </Animated.View>
+          </View>
+
+          <Animated.View
+            style={[
+              styles.brandBlock,
+              {
+                opacity: brandOpacity,
+                transform: [{ translateY: brandTranslateY }],
+              },
+            ]}>
+            <Animated.Text style={[styles.appTitle, { opacity: titleOpacity }]}>Cutloon</Animated.Text>
+            <Text style={styles.slogan}>salons.discovery.booking</Text>
+            <View style={styles.dotRow}>
+              <Animated.View style={[styles.dot, { transform: [{ scale: leftDotScale }] }]} />
+              <Animated.View style={[styles.dot, { transform: [{ scale: centerDotScale }] }]} />
+              <Animated.View style={[styles.dot, { transform: [{ scale: rightDotScale }] }]} />
+            </View>
+          </Animated.View>
+        </Animated.View>
+      )}
 
       {showSplash && (
         <Animated.View
