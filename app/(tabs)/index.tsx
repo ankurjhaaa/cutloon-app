@@ -26,6 +26,40 @@ const STORAGE_PERMISSION_MESSAGE = 'CUTLOON_REQUEST_STORAGE_PERMISSION';
 const LOCATION_PERMISSION_MESSAGE = 'CUTLOON_REQUEST_LOCATION_PERMISSION';
 const CAMERA_PERMISSION_MESSAGE = 'CUTLOON_REQUEST_CAMERA_PERMISSION';
 
+const SWIPE_TAB_URLS = [
+  'https://www.cutloon.com/',
+  'https://www.cutloon.com/explore',
+  'https://www.cutloon.com/bookings',
+  'https://www.cutloon.com/profile',
+] as const;
+
+const getSwipeTabIndexFromUrl = (url: string): number => {
+  try {
+    const parsedUrl = new URL(url);
+    const path = parsedUrl.pathname.replace(/\/+$/, '') || '/';
+
+    if (path === '/') {
+      return 0;
+    }
+
+    if (path === '/explore') {
+      return 1;
+    }
+
+    if (path === '/bookings') {
+      return 2;
+    }
+
+    if (path === '/profile') {
+      return 3;
+    }
+
+    return -1;
+  } catch {
+    return -1;
+  }
+};
+
 const WEBVIEW_PERMISSION_BRIDGE = `
 (function () {
   if (window.__cutloonPermissionBridgeInstalled) {
@@ -96,8 +130,12 @@ export default function HomeScreen() {
   const isDarkMode = colorScheme === 'dark';
   const [showSplash, setShowSplash] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
+  const [currentSwipeTabIndex, setCurrentSwipeTabIndex] = useState(-1);
   const webViewRef = useRef<WebView | null>(null);
   const lastBackPressTime = useRef(0);
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const lastSwipeAt = useRef(0);
   const splashOpacity = useRef(new Animated.Value(1)).current;
   const logoScale = useRef(new Animated.Value(0.56)).current;
   const logoSpin = useRef(new Animated.Value(0)).current;
@@ -401,6 +439,29 @@ export default function HomeScreen() {
     }
   };
 
+  const navigateBySwipe = (direction: 'next' | 'prev') => {
+    if (showSplash) {
+      return;
+    }
+
+    if (currentSwipeTabIndex < 0) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastSwipeAt.current < 500) {
+      return;
+    }
+
+    const targetIndex = direction === 'next' ? currentSwipeTabIndex + 1 : currentSwipeTabIndex - 1;
+    if (targetIndex < 0 || targetIndex >= SWIPE_TAB_URLS.length) {
+      return;
+    }
+
+    lastSwipeAt.current = now;
+    webViewRef.current?.injectJavaScript(`window.location.href='${SWIPE_TAB_URLS[targetIndex]}'; true;`);
+  };
+
   return (
     <SafeAreaView
       style={[
@@ -410,24 +471,47 @@ export default function HomeScreen() {
       edges={['top']}>
       <StatusBar style={showSplash ? 'dark' : isDarkMode ? 'light' : 'dark'} />
 
-      <WebView
-        ref={webViewRef}
-        source={{ uri: 'https://www.cutloon.com/login' }}
-        startInLoadingState
-        javaScriptEnabled
-        domStorageEnabled
-        allowFileAccess
-        onMessage={handleWebViewMessage}
-        injectedJavaScriptBeforeContentLoaded={WEBVIEW_PERMISSION_BRIDGE}
-        onNavigationStateChange={(navigationState) => {
-          setCanGoBack(navigationState.canGoBack);
+      <View
+        style={styles.webViewContainer}
+        onTouchStart={(event) => {
+          touchStartX.current = event.nativeEvent.pageX;
+          touchStartY.current = event.nativeEvent.pageY;
         }}
-        renderLoading={() => (
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" />
-          </View>
-        )}
-      />
+        onTouchEnd={(event) => {
+          const deltaX = event.nativeEvent.pageX - touchStartX.current;
+          const deltaY = event.nativeEvent.pageY - touchStartY.current;
+
+          const isHorizontalSwipe = Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
+          if (!isHorizontalSwipe) {
+            return;
+          }
+
+          if (deltaX > 0) {
+            navigateBySwipe('prev');
+          } else {
+            navigateBySwipe('next');
+          }
+        }}>
+        <WebView
+          ref={webViewRef}
+          source={{ uri: 'https://www.cutloon.com/login' }}
+          startInLoadingState
+          javaScriptEnabled
+          domStorageEnabled
+          allowFileAccess
+          onMessage={handleWebViewMessage}
+          injectedJavaScriptBeforeContentLoaded={WEBVIEW_PERMISSION_BRIDGE}
+          onNavigationStateChange={(navigationState) => {
+            setCanGoBack(navigationState.canGoBack);
+            setCurrentSwipeTabIndex(getSwipeTabIndexFromUrl(navigationState.url));
+          }}
+          renderLoading={() => (
+            <View style={styles.loaderContainer}>
+              <ActivityIndicator size="large" />
+            </View>
+          )}
+        />
+      </View>
 
       {showSplash && (
         <Animated.View
@@ -484,6 +568,9 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  webViewContainer: {
     flex: 1,
   },
   loaderContainer: {
