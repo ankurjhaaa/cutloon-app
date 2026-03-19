@@ -534,11 +534,7 @@ export default function HomeScreen() {
             onLoadEnd={() => {
               setRefreshing(false);
             }}
-            renderLoading={() => (
-              <View style={styles.loaderContainer}>
-                <ActivityIndicator size="large" />
-              </View>
-            )}
+           
             nestedScrollEnabled={true}
             style={{ flex: 1 }}
           />
