@@ -11,6 +11,8 @@ import {
   Image,
   Linking,
   Platform,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   ToastAndroid,
@@ -146,6 +148,8 @@ export default function HomeScreen() {
   const brandTranslateY = useRef(new Animated.Value(30)).current;
   const orbitRotation = useRef(new Animated.Value(0)).current;
   const dotWave = useRef(new Animated.Value(0)).current;
+  const [refreshing, setRefreshing] = useState(false);
+  const [isAtTop, setIsAtTop] = useState(true);
 
   useEffect(() => {
     const orbitAnimation = Animated.loop(
@@ -336,6 +340,7 @@ export default function HomeScreen() {
 
     const requestedPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (requestedPermission.granted) {
+      ToastAndroid.show('Permission granted. Pull to refresh to continue.', ToastAndroid.SHORT);
       return;
     }
 
@@ -351,12 +356,13 @@ export default function HomeScreen() {
               Linking.openSettings();
             },
           },
-        ]
+        ],
+        { cancelable: true }
       );
       return;
     }
 
-    ToastAndroid.show('Storage permission required to upload images', ToastAndroid.SHORT);
+    ToastAndroid.show('Storage permission required. Pull to refresh if needed.', ToastAndroid.SHORT);
   };
 
   const requestLocationPermission = async () => {
@@ -371,6 +377,7 @@ export default function HomeScreen() {
 
     const requestedPermission = await Location.requestForegroundPermissionsAsync();
     if (requestedPermission.granted) {
+      ToastAndroid.show('Permission granted. Pull to refresh to continue.', ToastAndroid.SHORT);
       return;
     }
 
@@ -386,12 +393,13 @@ export default function HomeScreen() {
               Linking.openSettings();
             },
           },
-        ]
+        ],
+        { cancelable: true }
       );
       return;
     }
 
-    ToastAndroid.show('Location permission required to access your location', ToastAndroid.SHORT);
+    ToastAndroid.show('Location permission required. Pull to refresh if needed.', ToastAndroid.SHORT);
   };
 
   const requestCameraPermission = async () => {
@@ -406,6 +414,7 @@ export default function HomeScreen() {
 
     const requestedPermission = await ImagePicker.requestCameraPermissionsAsync();
     if (requestedPermission.granted) {
+      ToastAndroid.show('Permission granted. Pull to refresh to continue.', ToastAndroid.SHORT);
       return;
     }
 
@@ -421,12 +430,13 @@ export default function HomeScreen() {
               Linking.openSettings();
             },
           },
-        ]
+        ],
+        { cancelable: true }
       );
       return;
     }
 
-    ToastAndroid.show('Camera permission required to access your camera', ToastAndroid.SHORT);
+    ToastAndroid.show('Camera permission required. Pull to refresh if needed.', ToastAndroid.SHORT);
   };
 
   const handleWebViewMessage = async (event: WebViewMessageEvent) => {
@@ -462,6 +472,11 @@ export default function HomeScreen() {
     webViewRef.current?.injectJavaScript(`window.location.href='${SWIPE_TAB_URLS[targetIndex]}'; true;`);
   };
 
+  const onRefresh = () => {
+    setRefreshing(true);
+    webViewRef.current?.reload();
+  };
+
   return (
     <SafeAreaView
       style={[
@@ -492,25 +507,42 @@ export default function HomeScreen() {
             navigateBySwipe('next');
           }
         }}>
-        <WebView
-          ref={webViewRef}
-          source={{ uri: 'https://www.cutloon.com/login' }}
-          startInLoadingState
-          javaScriptEnabled
-          domStorageEnabled
-          allowFileAccess
-          onMessage={handleWebViewMessage}
-          injectedJavaScriptBeforeContentLoaded={WEBVIEW_PERMISSION_BRIDGE}
-          onNavigationStateChange={(navigationState) => {
-            setCanGoBack(navigationState.canGoBack);
-            setCurrentSwipeTabIndex(getSwipeTabIndexFromUrl(navigationState.url));
-          }}
-          renderLoading={() => (
-            <View style={styles.loaderContainer}>
-              <ActivityIndicator size="large" />
-            </View>
-          )}
-        />
+        <ScrollView
+          contentContainerStyle={{ flex: 1 }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} enabled={isAtTop} />
+          }
+          scrollEnabled={isAtTop}
+          style={{ flex: 1 }}>
+          <WebView
+            ref={webViewRef}
+            source={{ uri: 'https://www.cutloon.com/login' }}
+            startInLoadingState
+            javaScriptEnabled
+            domStorageEnabled
+            allowFileAccess
+            onMessage={handleWebViewMessage}
+            injectedJavaScriptBeforeContentLoaded={WEBVIEW_PERMISSION_BRIDGE}
+            onNavigationStateChange={(navigationState) => {
+              setCanGoBack(navigationState.canGoBack);
+              setCurrentSwipeTabIndex(getSwipeTabIndexFromUrl(navigationState.url));
+            }}
+            onScroll={(event) => {
+              const y = event.nativeEvent.contentOffset.y;
+              setIsAtTop(y <= 0);
+            }}
+            onLoadEnd={() => {
+              setRefreshing(false);
+            }}
+            renderLoading={() => (
+              <View style={styles.loaderContainer}>
+                <ActivityIndicator size="large" />
+              </View>
+            )}
+            nestedScrollEnabled={true}
+            style={{ flex: 1 }}
+          />
+        </ScrollView>
       </View>
 
       {showSplash && (
