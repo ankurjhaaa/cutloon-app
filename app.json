@@ -12,12 +12,8 @@
       "bundleIdentifier": "com.anonymous.cutloonapp"
     },
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-logo-foreground-dummy.png",
-        "backgroundImage": "./assets/images/android-logo-background-dummy.png",
-        "monochromeImage": "./assets/images/android-logo-monochrome-dummy.png"
-      },
+      "versionCode":1,
+      "icon": "./assets/images/app-logo-dummy.png",  
       "permissions": [
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.ACCESS_FINE_LOCATION",
