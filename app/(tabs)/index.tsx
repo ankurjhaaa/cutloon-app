@@ -153,6 +153,13 @@ export default function HomeScreen() {
   const [pullRefreshStartedAt, setPullRefreshStartedAt] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!showSplash && !isPullRefreshing) {
+      return;
+    }
+
+    orbitRotation.setValue(0);
+    dotWave.setValue(0);
+
     const orbitAnimation = Animated.loop(
       Animated.timing(orbitRotation, {
         toValue: 1,
@@ -163,27 +170,32 @@ export default function HomeScreen() {
     );
 
     const dotsAnimation = Animated.loop(
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(dotWave, {
-            toValue: 1,
-            duration: 650,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-          }),
-          Animated.timing(dotWave, {
-            toValue: 0,
-            duration: 650,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-          }),
-        ])
-      )
+      Animated.sequence([
+        Animated.timing(dotWave, {
+          toValue: 1,
+          duration: 650,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(dotWave, {
+          toValue: 0,
+          duration: 650,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
     );
 
     orbitAnimation.start();
     dotsAnimation.start();
 
+    return () => {
+      orbitAnimation.stop();
+      dotsAnimation.stop();
+    };
+  }, [dotWave, isPullRefreshing, orbitRotation, showSplash]);
+
+  useEffect(() => {
     const splashAnimation = Animated.sequence([
       Animated.parallel([
         Animated.timing(ringOpacity, {
@@ -260,16 +272,12 @@ export default function HomeScreen() {
 
     return () => {
       splashAnimation.stop();
-      orbitAnimation.stop();
-      dotsAnimation.stop();
     };
   }, [
     brandOpacity,
     brandTranslateY,
-    dotWave,
     logoScale,
     logoSpin,
-    orbitRotation,
     ringOpacity,
     ringScale,
     splashOpacity,
