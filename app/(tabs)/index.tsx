@@ -23,7 +23,6 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-const STORAGE_PERMISSION_MESSAGE = 'CUTLOON_REQUEST_STORAGE_PERMISSION';
 const LOCATION_PERMISSION_MESSAGE = 'CUTLOON_REQUEST_LOCATION_PERMISSION';
 const CAMERA_PERMISSION_MESSAGE = 'CUTLOON_REQUEST_CAMERA_PERMISSION';
 
@@ -79,8 +78,6 @@ const WEBVIEW_PERMISSION_BRIDGE = `
       var accept = fileInput.getAttribute('accept') || '';
       if (accept.includes('image') || accept.includes('video')) {
         window.ReactNativeWebView.postMessage('${CAMERA_PERMISSION_MESSAGE}');
-      } else {
-        window.ReactNativeWebView.postMessage('${STORAGE_PERMISSION_MESSAGE}');
       }
     }
   }, true);
@@ -337,43 +334,6 @@ export default function HomeScreen() {
     outputRange: [0.95, 1.2],
   });
 
-  const requestStoragePermissionForUpload = async () => {
-    if (Platform.OS !== 'android') {
-      return;
-    }
-
-    const currentPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
-    if (currentPermission.granted) {
-      return;
-    }
-
-    const requestedPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (requestedPermission.granted) {
-      ToastAndroid.show('Permission granted. Pull to refresh to continue.', ToastAndroid.SHORT);
-      return;
-    }
-
-    if (!requestedPermission.canAskAgain) {
-      Alert.alert(
-        'Storage Permission Disabled',
-        'Storage permissions are required to upload images. Please enable them in app settings.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Open Settings',
-            onPress: () => {
-              Linking.openSettings();
-            },
-          },
-        ],
-        { cancelable: true }
-      );
-      return;
-    }
-
-    ToastAndroid.show('Storage permission required. Pull to refresh if needed.', ToastAndroid.SHORT);
-  };
-
   const requestLocationPermission = async () => {
     if (Platform.OS !== 'android') {
       return;
@@ -449,9 +409,7 @@ export default function HomeScreen() {
   };
 
   const handleWebViewMessage = async (event: WebViewMessageEvent) => {
-    if (event.nativeEvent.data === STORAGE_PERMISSION_MESSAGE) {
-      await requestStoragePermissionForUpload();
-    } else if (event.nativeEvent.data === LOCATION_PERMISSION_MESSAGE) {
+    if (event.nativeEvent.data === LOCATION_PERMISSION_MESSAGE) {
       await requestLocationPermission();
     } else if (event.nativeEvent.data === CAMERA_PERMISSION_MESSAGE) {
       await requestCameraPermission();
